@@ -1,4 +1,8 @@
 import config
+from langchain.vectorstores import Pinecone
+from langchain.embeddings.openai import OpenAIEmbeddings
+import pinecone
+
 
 import tiktoken
 import openai
@@ -31,13 +35,24 @@ class ChatGPT:
 
         n_dialog_messages_before = len(dialog_messages)
         answer = None
+        
         while answer is None:
             try:
                 if self.model in {"gpt-3.5-turbo-16k", "gpt-3.5-turbo", "gpt-4"}:
                     messages = self._generate_prompt_messages(message, dialog_messages, chat_mode)
+
+                    xq = openai.Embedding.create(input=message, engine="text-davinci-003")['data'][0]['embedding']
+                    index = pinecone.Index('ole-data')
+
+                    res = index.query([xq], top_k=5, include_metadata=True)
+                    # Retrieve relevant dialog messages from Pinecone index
+                    relevant_messages = [dialog_messages[idx] for idx in res[0]['ids']]
+
+                    messages += relevant_messages
+
                     r = await openai.ChatCompletion.acreate(
                         model=self.model,
-                        messages=messages,
+                        messages=messages,  #вставить сюда res
                         **OPENAI_COMPLETION_OPTIONS
                     )
                     answer = r.choices[0].message["content"]
@@ -121,6 +136,14 @@ class ChatGPT:
         prompt = config.chat_modes[chat_mode]["prompt_start"]
         prompt += "\n\n"
 
+        pinecone_api_key = "9563d5a7-04cc-49ff-8f96-e44dc4b7fe44"
+        index_name="ole-data"
+        pinecone.init(api_key=pinecone_api_key,
+                environment="gcp-starter")
+        index = pinecone.Index(index_name)
+
+
+
         # add chat context
         if len(dialog_messages) > 0:
             prompt += "Chat:\n"
@@ -136,7 +159,7 @@ class ChatGPT:
 
     def _generate_prompt_messages(self, message, dialog_messages, chat_mode):
         prompt = config.chat_modes[chat_mode]["prompt_start"]
-
+        
         messages = [{"role": "system", "content": prompt}]
         for dialog_message in dialog_messages:
             messages.append({"role": "user", "content": dialog_message["user"]})
