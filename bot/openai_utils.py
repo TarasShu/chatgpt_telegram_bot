@@ -13,6 +13,8 @@ openai.api_key = config.openai_api_key
 if config.openai_api_base is not None:
     openai.api_base = config.openai_api_base
 
+pinecone_api_key = config.pinecone_api_key
+pinecone_index_name = config.pinecone_index_name
 
 OPENAI_COMPLETION_OPTIONS = {
     "temperature": 0.7,
@@ -28,6 +30,8 @@ class ChatGPT:
     def __init__(self, model="gpt-3.5-turbo"):
         assert model in {"text-davinci-003", "gpt-3.5-turbo-16k", "gpt-3.5-turbo", "gpt-4"}, f"Unknown model: {model}"
         self.model = model
+        pinecone.init(api_key=pinecone_api_key, environment="gcp-starter")
+        self.index = pinecone.Index(pinecone_index_name)
 
     async def send_message(self, message, dialog_messages=[], chat_mode="assistant"):
         if chat_mode not in config.chat_modes.keys():
@@ -35,21 +39,16 @@ class ChatGPT:
 
         n_dialog_messages_before = len(dialog_messages)
         answer = None
-        
         while answer is None:
             try:
                 if self.model in {"gpt-3.5-turbo-16k", "gpt-3.5-turbo", "gpt-4"}:
                     messages = self._generate_prompt_messages(message, dialog_messages, chat_mode)
-
                     xq = openai.Embedding.create(input=message, engine="text-davinci-003")['data'][0]['embedding']
                     index = pinecone.Index('ole-data')
-
-                    res = index.query([xq], top_k=5, include_metadata=True)
+                    res = self.index.query([xq], top_k=5, include_metadata=True)
                     # Retrieve relevant dialog messages from Pinecone index
                     relevant_messages = [dialog_messages[idx] for idx in res[0]['ids']]
-
                     messages += relevant_messages
-
                     r = await openai.ChatCompletion.acreate(
                         model=self.model,
                         messages=messages,  #вставить сюда res
@@ -60,10 +59,10 @@ class ChatGPT:
                     prompt = self._generate_prompt(message, dialog_messages, chat_mode)
                     r = await openai.Completion.acreate(
                         engine=self.model,
-                        prompt=prompt,
+                        prompt= prompt,
                         **OPENAI_COMPLETION_OPTIONS
                     )
-                    answer = r.choices[0].text
+                    answer = r.choices[0].message["content"]#text
                 else:
                     raise ValueError(f"Unknown model: {self.model}")
 
@@ -136,14 +135,6 @@ class ChatGPT:
         prompt = config.chat_modes[chat_mode]["prompt_start"]
         prompt += "\n\n"
 
-        pinecone_api_key = "9563d5a7-04cc-49ff-8f96-e44dc4b7fe44"
-        index_name="ole-data"
-        pinecone.init(api_key=pinecone_api_key,
-                environment="gcp-starter")
-        index = pinecone.Index(index_name)
-
-
-
         # add chat context
         if len(dialog_messages) > 0:
             prompt += "Chat:\n"
@@ -159,7 +150,6 @@ class ChatGPT:
 
     def _generate_prompt_messages(self, message, dialog_messages, chat_mode):
         prompt = config.chat_modes[chat_mode]["prompt_start"]
-        
         messages = [{"role": "system", "content": prompt}]
         for dialog_message in dialog_messages:
             messages.append({"role": "user", "content": dialog_message["user"]})
