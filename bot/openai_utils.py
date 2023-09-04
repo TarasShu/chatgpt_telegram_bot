@@ -46,6 +46,7 @@ class ChatGPT:
                     xq = openai.Embedding.create(input=message, engine="text-davinci-003")['data'][0]['embedding']
                     index = pinecone.Index('ole-data')
                     res = self.index.query([xq], top_k=5, include_metadata=True)
+
                     # Retrieve relevant dialog messages from Pinecone index
                     relevant_messages = [dialog_messages[idx] for idx in res[0]['ids']]
                     messages += relevant_messages
@@ -87,6 +88,7 @@ class ChatGPT:
         answer = None
         while answer is None:
             try:
+                
                 if self.model in {"gpt-3.5-turbo-16k", "gpt-3.5-turbo", "gpt-4"}:
                     messages = self._generate_prompt_messages(message, dialog_messages, chat_mode)
                     r_gen = await openai.ChatCompletion.acreate(
@@ -104,7 +106,7 @@ class ChatGPT:
                             n_input_tokens, n_output_tokens = self._count_tokens_from_messages(messages, answer, model=self.model)
                             n_first_dialog_messages_removed = n_dialog_messages_before - len(dialog_messages)
                             yield "not_finished", answer, (n_input_tokens, n_output_tokens), n_first_dialog_messages_removed
-                elif self.model == "text-davinci-003":
+                elif self.model == "text-embedding-ada-002":
                     prompt = self._generate_prompt(message, dialog_messages, chat_mode)
                     r_gen = await openai.Completion.acreate(
                         engine=self.model,
@@ -136,6 +138,13 @@ class ChatGPT:
         prompt += "\n\n"
 
         # add chat context
+        xq = openai.Embedding.create(input=dialog_messages, engine="text-embedding-ada-002")['data'][0]['embedding']
+        index = pinecone.Index('ole-data')
+        res = self.index.query([xq], top_k=5, include_metadata=True)
+                    
+        relevant_messages = [dialog_messages[idx] for idx in res[0]['ids']]
+        prompt += relevant_messages
+
         if len(dialog_messages) > 0:
             prompt += "Chat:\n"
             for dialog_message in dialog_messages:
@@ -151,6 +160,7 @@ class ChatGPT:
     def _generate_prompt_messages(self, message, dialog_messages, chat_mode):
         prompt = config.chat_modes[chat_mode]["prompt_start"]
         messages = [{"role": "system", "content": prompt}]
+       
         for dialog_message in dialog_messages:
             messages.append({"role": "user", "content": dialog_message["user"]})
             messages.append({"role": "assistant", "content": dialog_message["bot"]})
