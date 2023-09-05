@@ -121,7 +121,7 @@ class ChatGPT:
                         n_input_tokens, n_output_tokens = self._count_tokens_from_prompt(prompt, answer, model=self.model)
                         n_first_dialog_messages_removed = n_dialog_messages_before - len(dialog_messages)
                         yield "not_finished", answer, (n_input_tokens, n_output_tokens), n_first_dialog_messages_removed
-
+                    print("answer HWRE")
                 answer = self._postprocess_answer(answer)
 
             except openai.error.InvalidRequestError as e:  # too many tokens
@@ -136,12 +136,13 @@ class ChatGPT:
     def _generate_prompt(self, message, dialog_messages, chat_mode):
         prompt = config.chat_modes[chat_mode]["prompt_start"]
         prompt += "\n\n"
+        print("answer HWRE")
 
         # add chat context
         xq = openai.Embedding.create(input=dialog_messages, engine="text-embedding-ada-002")['data'][0]['embedding']
         index = pinecone.Index('ole-data')
         res = self.index.query([xq], top_k=5, include_metadata=True)
-                    
+        print("CONTEXT ADDED")    
         relevant_messages = [dialog_messages[idx] for idx in res[0]['ids']]
         prompt += relevant_messages
 
@@ -160,7 +161,7 @@ class ChatGPT:
     def _generate_prompt_messages(self, message, dialog_messages, chat_mode):
         prompt = config.chat_modes[chat_mode]["prompt_start"]
         messages = [{"role": "system", "content": prompt}]
-       
+        print(" _generate_prompt_messages QWQQQQQQ")
         for dialog_message in dialog_messages:
             messages.append({"role": "user", "content": dialog_message["user"]})
             messages.append({"role": "assistant", "content": dialog_message["bot"]})
